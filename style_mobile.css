@@ -177,10 +177,6 @@ body {
     width: 90vw;
 }
 
-#pokedex {
-    height: auto;
-}
-
 @media screen and (max-width:600px) { 
     #strongest-table, #strongest-links, #page-nav, #pokemongo, 
     #pokemongo-table thead tr > *:nth-child(1):after {

@@ -416,7 +416,7 @@ span.poke-form-name, .poke-number {
 }
 
 #pokedex {
-    height: 400px;
+    margin-bottom: 1rem;
 }
 
 #containers-father {

@@ -3720,7 +3720,7 @@ function SetStrongestTableFromArray(str_pokemons, num_rows = null,
             }
 
             const td_tier = $("<td></td>");
-            if (!settings.display_grouped && show_pct) {
+            if ((!settings.search_suboptimal || !settings.display_grouped) && show_pct) {
                 if (!cur_tier_td || p.tier != cur_tier_td.text()) {
                     td_tier.text(p.tier);
                     td_tier.addClass("tier-label");

@@ -2077,6 +2077,9 @@ function LoadPokemongoTable(jb_pkm_obj, mega, mega_y, stats, max_stats = null) {
     const def = stats.def;
     const hp = stats.hp;
 
+    // cache attack tiers
+    const attackTiers = {};
+
     // shadow stats
     const atk_sh = atk * 6 / 5;
     const def_sh = def * 5 / 6;
@@ -2103,6 +2106,30 @@ function LoadPokemongoTable(jb_pkm_obj, mega, mega_y, stats, max_stats = null) {
     let rat_pcts_vs_max = 0;
     let rat_sh_pcts_vs_max = 0;
     let num_movesets = 0;
+    
+    /**
+     * Builds the tier mapping by attack type. Iterates all pokemon
+     * entries and saves the highest rated shadow and non-shadow
+     * tier for the specified type
+     */
+    function MapPokemonAttacks(type, pokemon) {
+        if (!!attackTiers[type]) {
+            return;
+        }
+
+        attackTiers[type] = [];
+        for (let entry of pokemon) {
+            if (entry.id !== jb_pkm_obj.id || entry.mega !== mega || entry.mega_y !== mega_y) {
+                continue;
+            }
+    
+            // make shadow array-like for easier evaluation later
+            const isShadow = Number(entry.shadow);
+            if (!attackTiers[type][isShadow] || entry.rat > attackTiers[type][isShadow].rat) {
+                attackTiers[type][isShadow] = entry;
+            }
+        }
+    }
 
     // appends new table rows asynchronously (so that Mew loads fast)
     // each chunk of moves combinations with a specific fast move
@@ -2130,8 +2157,9 @@ function LoadPokemongoTable(jb_pkm_obj, mega, mega_y, stats, max_stats = null) {
         }
 
         const fm_type = fm_obj.type;
+        MapPokemonAttacks(fm_type, GetStrongestOfOneType(null, fm_type, false).str_pokemons);
 
-        for (cm of all_cms) {
+        for (let cm of all_cms) {
 
             const cm_is_elite = elite_cms.includes(cm);
 
@@ -2141,7 +2169,8 @@ function LoadPokemongoTable(jb_pkm_obj, mega, mega_y, stats, max_stats = null) {
                 continue;
 
             const cm_type = cm_obj.type;
-
+            MapPokemonAttacks(cm_type, GetStrongestOfOneType(null, cm_type, false).str_pokemons);
+            
             // calculates the data
 
             const dps = GetDPS(types, atk, def, hp, fm_obj, cm_obj);
@@ -2245,6 +2274,7 @@ function LoadPokemongoTable(jb_pkm_obj, mega, mega_y, stats, max_stats = null) {
     // appends the first fast move chunk
     AppendFMChunk(0, function() {
         SortPokemongoTable(6, 7);
+        BuildAttackTiers(jb_pkm_obj.name, attackTiers);
         loading_pogo_moves = false;
     });
 }
@@ -2536,6 +2566,41 @@ function GetTDO(dps, hp, def, y = null) {
     if (!y)
         y = estimated_y_numerator / def;
     return (dps * (hp / y));
+}
+
+function BuildAttackTierLabel(entry) {
+    const shadow = entry.shadow ? '<img src="imgs/flame.svg" class="shadow-icon filter-shadow">' : '';
+    return $(`<span style="position: relative;" class='type-text tier-${entry.tier}'>${entry.tier}${shadow}</span>`);
+}
+
+
+/**
+ * Builds the attack 
+ */
+function BuildAttackTiers(name, attackTiers) {
+    const table_container = $("#attack-tiers table tbody");
+    table_container.empty();
+    const types = Object.keys(attackTiers).sort((a, b) => 
+        attackTiers[b].reduce((acc, b) => acc + b.rat ?? 0, 0) - 
+        attackTiers[a].reduce((acc, b) => acc + b.rat ?? 0, 0)
+    ).filter(type => attackTiers[type].some(at => at.tier));
+    
+    let firstRow = true;
+    for (let type of types) {
+        const attackTier = attackTiers[type];
+        const type_container = $(`<tr><td><a class='type-text bg-${type}' onClick='LoadStrongestAndUpdateURL("${type}", false)'>${type}</a></td></tr>`);
+
+        if (firstRow) {
+            type_container.prepend(`<td rowspan="${types.length}"><b>${name}'s</b> tier ranking by attack type</td>`);
+        }
+
+        const tier_cell = $("<td></td>");
+        tier_cell.append(attackTier.map(entry => BuildAttackTierLabel(entry)));
+        type_container.append(tier_cell);
+        
+        table_container.append(type_container);
+        firstRow = false;
+    }
 }
 
 /**
@@ -2853,7 +2918,8 @@ function LoadStrongest(type = "Any") {
     // removes previous table rows
     $("#strongest-table tbody tr").remove();
     if (type != "Each") {
-        SetTableOfStrongestOfOneType(settings.search_suboptimal && settings.display_grouped, type, search_versus);
+        const strongest = GetStrongestOfOneType(settings.strongest_count, type, search_versus);
+        SetStrongestTableFromArray(strongest.str_pokemons, true, true, true, strongest.best_pct);
     } else {
         SetTableOfStrongestOfEachType();
     }
@@ -2993,10 +3059,11 @@ function SetTableOfStrongestOfEachType() {
  * The number of rows in the table is set to match the table with one
  * pokemon of each type, therefore, there are as many rows as pkm types.
  */
-function SetTableOfStrongestOfOneType(search_suboptimal, type = null, versus = false) {
+function GetStrongestOfOneType(strongest_count = null, type = null, versus = false) {
 
     // over-create list, then filter down later
     const num_rows = 500; //settings.strongest_count;
+    strongest_count = strongest_count ?? num_rows;
 
     // array of strongest pokemon and moveset found so far
     let str_pokemons = [];
@@ -3159,8 +3226,8 @@ function SetTableOfStrongestOfOneType(search_suboptimal, type = null, versus = f
     }
 
     // re-order array based on the optimal movesets of each pokemon
-    if (search_suboptimal) {
-        str_pokemons.length = Math.min(str_pokemons.length, settings.strongest_count); //truncate to top movesets early
+    if (settings.search_suboptimal && settings.display_grouped) {
+        str_pokemons.length = Math.min(str_pokemons.length, strongest_count); //truncate to top movesets early
 
         let str_pokemons_optimal = new Map(); // map of top movesets per mon
         let rat_order = 0;
@@ -3192,11 +3259,13 @@ function SetTableOfStrongestOfOneType(search_suboptimal, type = null, versus = f
         }
         BuildTiers(str_pokemons, top_compare);
     
-        str_pokemons.length = Math.min(str_pokemons.length, settings.strongest_count); // truncate late so all movesets could be evaluated
+        str_pokemons.length = Math.min(str_pokemons.length, strongest_count); // truncate late so all movesets could be evaluated
     }
 
-    // sets table from array
-    SetStrongestTableFromArray(str_pokemons, str_pokemons.length, true, true, true, (best_mon / top_compare));
+    return {
+        str_pokemons,
+        best_pct: best_mon / top_compare,
+    };
 }
 
 /**
@@ -3686,11 +3755,9 @@ function GetPokemonStrongestMoveset(jb_pkm_obj, mega, mega_y, shadow,
  * the remaining rows with "-". If the number of rows isn't specified,
  * there will be as many rows as pokemon in the array.
  */
-function SetStrongestTableFromArray(str_pokemons, num_rows = null, 
-    display_numbered = false, highlight_suboptimal = false, show_pct = false, best_pct = 1.0) {
+function SetStrongestTableFromArray(str_pokemons, display_numbered = false, highlight_suboptimal = false, show_pct = false, best_pct = 1.0) {
 
-    if (!num_rows)
-        num_rows = str_pokemons.length;
+    const num_rows = str_pokemons.length;
 
     const encountered_mons = new Set();
     let cur_tier_td = null;

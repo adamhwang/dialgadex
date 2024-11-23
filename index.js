@@ -2119,7 +2119,7 @@ function LoadPokemongoTable(jb_pkm_obj, mega, mega_y, stats, max_stats = null) {
 
         attackTiers[type] = [];
         for (let entry of pokemon) {
-            if (entry.id !== jb_pkm_obj.id || entry.mega !== mega || entry.mega_y !== mega_y) {
+            if (entry.id !== jb_pkm_obj.id || entry.form !== jb_pkm_obj.form || entry.mega !== mega || entry.mega_y !== mega_y) {
                 continue;
             }
     
